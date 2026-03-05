@@ -149,6 +149,24 @@ if(ENABLE_SIO)
   LIST(APPEND INSTALL_LIBRARIES podioSioIO podioSioIODict)
 endif()
 
+# --- Arrow I/O functionality and corresponding dictionary
+if(Arrow_FOUND)
+  SET(arrow_sources
+    ArrowWriter.cc
+  )
+
+  SET(arrow_headers
+    ${PROJECT_SOURCE_DIR}/include/podio/ArrowWriter.h
+  )
+
+  # Note: We are temporarily passing root_selection.xml until an Arrow-specific one is needed
+  PODIO_ADD_LIB_AND_DICT(podioArrowIO "${arrow_headers}" "${arrow_sources}" root_selection.xml)
+  target_link_libraries(podioArrowIO PUBLIC podio::podio arrow_shared ${CMAKE_DL_LIBS})
+  target_compile_definitions(podioArrowIO PUBLIC PODIO_ENABLE_ARROW=1)
+
+  LIST(APPEND INSTALL_LIBRARIES podioArrowIO podioArrowIODict)
+endif()
+
 
 # --- IO
 set(io_sources
@@ -171,6 +189,9 @@ if(ENABLE_SIO)
   target_link_libraries(podioIO PUBLIC podio::podioSioIO)
 endif()
 
+if(Arrow_FOUND)
+  target_link_libraries(podioIO PUBLIC podio::podioArrowIO)
+endif()
 
 # --- DataSource
 if(ENABLE_DATASOURCE)
@@ -251,3 +272,15 @@ if (ENABLE_DATASOURCE)
     DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     )
 endif()
+
+if(Arrow_FOUND)
+  install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/podioArrowIODictDict.rootmap
+    ${CMAKE_CURRENT_BINARY_DIR}/libpodioArrowIODict_rdict.pcm
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+  )
+endif()
+
+# --- Arrow Test Executable ---
+add_executable(test_arrow ArrowTest.cc)
+target_link_libraries(test_arrow PUBLIC podio::podio podioArrowIO)

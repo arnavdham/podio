@@ -119,6 +119,7 @@ if(NOT ROOT_CXX_STANDARD VERSION_EQUAL CMAKE_CXX_STANDARD)
 endif()
 
 list(APPEND PODIO_IO_HANDLERS ROOT)
+find_package(Arrow REQUIRED)
 
 # python setup (including python package discovery and install dir)
 podio_python_setup()
