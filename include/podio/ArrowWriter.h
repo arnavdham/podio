@@ -2,6 +2,7 @@
 #define PODIO_ARROWWRITER_H
 
 #include <arrow/api.h>
+#include "podio/Frame.h"
 #include <string>
 
 namespace podio {
@@ -11,8 +12,7 @@ public:
   ArrowWriter(const std::string& filename);
   ~ArrowWriter();
 
-  // A simple test function to prove Arrow is working
-  void testArrowConnection();
+  arrow::Status writeFrame(const podio::Frame& frame);
 
 private:
   std::string m_filename;
