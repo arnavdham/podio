@@ -59,6 +59,7 @@ SET(core_sources
   SchemaEvolution.cc
   Glob.cc
   Pythonizations.cc
+  ArrowTypeRegistry.cc
   )
 
 SET(core_headers
@@ -149,6 +150,24 @@ if(ENABLE_SIO)
   LIST(APPEND INSTALL_LIBRARIES podioSioIO podioSioIODict)
 endif()
 
+# --- Arrow I/O functionality
+if(ENABLE_ARROW)
+  SET(arrow_sources
+    ArrowWriter.cc
+    )
+
+  add_library(podioArrowIO SHARED ${arrow_sources})
+  add_library(podio::podioArrowIO ALIAS podioArrowIO)
+  target_include_directories(podioArrowIO PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+  )
+  target_link_libraries(podioArrowIO PUBLIC podio::podio ${PODIO_ARROW_TARGET})
+  target_compile_definitions(podioArrowIO PUBLIC PODIO_ENABLE_ARROW=1)
+
+  LIST(APPEND INSTALL_LIBRARIES podioArrowIO)
+endif()
+
 
 # --- IO
 set(io_sources
@@ -169,6 +188,12 @@ target_include_directories(podioIO PUBLIC
 target_link_libraries(podioIO PUBLIC podio::podio podio::podioRootIO)
 if(ENABLE_SIO)
   target_link_libraries(podioIO PUBLIC podio::podioSioIO)
+endif()
+if(ENABLE_ARROW)
+  target_link_libraries(podioIO PUBLIC podio::podioArrowIO)
+  target_compile_definitions(podioIO PUBLIC PODIO_ENABLE_ARROW=1)
+else()
+  target_compile_definitions(podioIO PUBLIC PODIO_ENABLE_ARROW=0)
 endif()
 
 
@@ -219,6 +244,9 @@ if (NOT ENABLE_RNTUPLE)
 endif()
 if (NOT ENABLE_DATASOURCE)
   list(FILTER headers_necessary EXCLUDE REGEX DataSource.h)
+endif()
+if (NOT ENABLE_ARROW)
+  list(FILTER headers_necessary EXCLUDE REGEX Arrow.*\\.h$)
 endif()
 
 install(FILES ${headers_necessary}

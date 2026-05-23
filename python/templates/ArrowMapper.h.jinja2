@@ -3,10 +3,12 @@
 #ifndef {{ package_name.upper() }}_ARROWMAPPER_H
 #define {{ package_name.upper() }}_ARROWMAPPER_H
 
+#include "podio/utilities/ArrowTypeRegistry.h"
 #include <arrow/type.h>
 #include <arrow/util/key_value_metadata.h>
 
 #include <memory>
+#include <string>
 
 namespace {{ package_name }}::arrow_io {
 
@@ -43,6 +45,21 @@ inline std::shared_ptr<arrow::Schema>
 schemaWithMetadata(std::shared_ptr<const arrow::KeyValueMetadata> metadata) {
   return schema()->WithMetadata(std::move(metadata));
 }
+
+inline bool registerTypes() {
+  auto& reg = podio::ArrowTypeRegistry::mutInstance();
+  auto bigSchema = schema();
+  for (const auto& field : bigSchema->fields()) {
+    std::string typeName = field->name();
+    if (!std::string("{{ package_name }}").empty()) {
+      typeName = std::string("{{ package_name }}::") + typeName;
+    }
+    reg.registerType(typeName, field->type());
+  }
+  return true;
+}
+
+static const bool typesRegistered = registerTypes();
 
 } // namespace {{ package_name }}::arrow_io
 
