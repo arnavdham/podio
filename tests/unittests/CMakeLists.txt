@@ -55,6 +55,12 @@ if (ENABLE_ARROW)
   target_compile_definitions(unittest_podio PRIVATE PODIO_ENABLE_ARROW=1)
 endif()
 
+if (ENABLE_ARROW)
+  target_link_libraries(unittest_podio PRIVATE ${PODIO_ARROW_TARGET})
+  target_compile_definitions(unittest_podio PRIVATE PODIO_ENABLE_ARROW=1)
+endif()
+
+
 # The unittests can easily be filtered and they are labelled so we can put together a
 # list of labels that we want to ignore
 set(filter_tests "")
