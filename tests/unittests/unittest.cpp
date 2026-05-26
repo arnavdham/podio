@@ -1890,27 +1890,27 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
 
   SECTION("Verify that all expected datamodel types are registered") {
     const std::vector<std::string> expectedTypes = {
-      "datamodel::EventInfo",
-      "datamodel::ExampleHit",
-      "datamodel::ExampleMC",
-      "datamodel::ExampleCluster",
-      "datamodel::ExampleReferencingType",
-      "datamodel::ExampleWithVectorMember",
-      "datamodel::ExampleWithOneRelation",
-      "datamodel::ExampleWithArrayComponent",
-      "datamodel::ExampleWithComponent",
-      "datamodel::ExampleForCyclicDependency1",
-      "datamodel::ExampleForCyclicDependency2",
-      "datamodel::ExampleWithNamespace",
-      "datamodel::ExampleWithARelation",
-      "datamodel::ExampleWithDifferentNamespaceRelations",
-      "datamodel::ExampleWithArray",
-      "datamodel::ExampleWithFixedWidthIntegers",
-      "datamodel::ExampleWithUserInit",
-      "datamodel::ExampleWithSingleSelfRelation",
-      "datamodel::ExampleWithInterfaceRelation",
-      "datamodel::ExampleWithExternalExtraCode",
-      "datamodel::EnergyInNamespace"
+      "EventInfo",
+      "ExampleHit",
+      "ExampleMC",
+      "ExampleCluster",
+      "ExampleReferencingType",
+      "ExampleWithVectorMember",
+      "ExampleWithOneRelation",
+      "ExampleWithArrayComponent",
+      "ExampleWithComponent",
+      "ExampleForCyclicDependency1",
+      "ExampleForCyclicDependency2",
+      "ex42::ExampleWithNamespace",
+      "ex42::ExampleWithARelation",
+      "ExampleWithDifferentNamespaceRelations",
+      "ExampleWithArray",
+      "ExampleWithFixedWidthIntegers",
+      "ExampleWithUserInit",
+      "ExampleWithSingleSelfRelation",
+      "ExampleWithInterfaceRelation",
+      "ExampleWithExternalExtraCode",
+      "nsp::EnergyInNamespace"
     };
 
     for (const auto& typeName : expectedTypes) {
@@ -1920,7 +1920,7 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
   }
 
   SECTION("Verify primitive types mapping") {
-    auto structType = getArrowStructType(reg.getType("datamodel::EventInfo"));
+    auto structType = getArrowStructType(reg.getType("EventInfo"));
     REQUIRE(structType != nullptr);
     auto numberField = structType->GetFieldByName("Number");
     REQUIRE(numberField != nullptr);
@@ -1928,7 +1928,7 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
   }
 
   SECTION("Verify multi-field hit type mapping") {
-    auto structType = getArrowStructType(reg.getType("datamodel::ExampleHit"));
+    auto structType = getArrowStructType(reg.getType("ExampleHit"));
     REQUIRE(structType != nullptr);
 
     const std::vector<std::pair<std::string, arrow::Type::type>> expectedFields = {
@@ -1947,7 +1947,7 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
   }
 
   SECTION("Verify vector members mapping (List of primitives)") {
-    auto structType = getArrowStructType(reg.getType("datamodel::ExampleWithVectorMember"));
+    auto structType = getArrowStructType(reg.getType("ExampleWithVectorMember"));
     REQUIRE(structType != nullptr);
 
     auto countField = structType->GetFieldByName("count");
@@ -1959,7 +1959,7 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
   }
 
   SECTION("Verify one-to-one relations mapping (Object Reference struct)") {
-    auto structType = getArrowStructType(reg.getType("datamodel::ExampleWithOneRelation"));
+    auto structType = getArrowStructType(reg.getType("ExampleWithOneRelation"));
     REQUIRE(structType != nullptr);
 
     auto clusterField = structType->GetFieldByName("cluster");
@@ -1976,7 +1976,7 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
   }
 
   SECTION("Verify one-to-many relations mapping (List of Object References)") {
-    auto structType = getArrowStructType(reg.getType("datamodel::ExampleCluster"));
+    auto structType = getArrowStructType(reg.getType("ExampleCluster"));
     REQUIRE(structType != nullptr);
 
     auto hitsField = structType->GetFieldByName("Hits");
@@ -1992,7 +1992,7 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
   }
 
   SECTION("Verify nested component structures & fixed-size arrays mapping") {
-    auto structType = getArrowStructType(reg.getType("datamodel::ExampleWithArrayComponent"));
+    auto structType = getArrowStructType(reg.getType("ExampleWithArrayComponent"));
     REQUIRE(structType != nullptr);
 
     auto sField = structType->GetFieldByName("s");
@@ -2000,7 +2000,7 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
     REQUIRE(sField->type()->id() == arrow::Type::STRUCT);
 
     auto componentStruct = std::static_pointer_cast<arrow::StructType>(sField->type());
-    
+
     // Check primitive fields in component SimpleStruct
     REQUIRE(componentStruct->GetFieldByName("x")->type()->id() == arrow::Type::INT32);
     REQUIRE(componentStruct->GetFieldByName("y")->type()->id() == arrow::Type::INT32);
@@ -2016,7 +2016,7 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
   }
 
   SECTION("Verify fixed-width integer types and custom struct layouts") {
-    auto structType = getArrowStructType(reg.getType("datamodel::ExampleWithFixedWidthIntegers"));
+    auto structType = getArrowStructType(reg.getType("ExampleWithFixedWidthIntegers"));
     REQUIRE(structType != nullptr);
 
     // Direct members
@@ -2043,14 +2043,14 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
   }
 
   SECTION("Verify fixed-size array of struct components") {
-    auto structType = getArrowStructType(reg.getType("datamodel::ExampleWithArray"));
+    auto structType = getArrowStructType(reg.getType("ExampleWithArray"));
     REQUIRE(structType != nullptr);
 
     // structArray field (array of structs: NamespaceStruct structArray[4])
     auto structArrayField = structType->GetFieldByName("structArray");
     REQUIRE(structArrayField != nullptr);
     REQUIRE(structArrayField->type()->id() == arrow::Type::FIXED_SIZE_LIST);
-    
+
     auto fslType = std::static_pointer_cast<arrow::FixedSizeListType>(structArrayField->type());
     REQUIRE(fslType->list_size() == 4);
     REQUIRE(fslType->value_type()->id() == arrow::Type::STRUCT);

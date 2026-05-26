@@ -49,13 +49,9 @@ schemaWithMetadata(std::shared_ptr<const arrow::KeyValueMetadata> metadata) {
 inline bool registerTypes() {
   auto& reg = podio::ArrowTypeRegistry::mutInstance();
   auto bigSchema = schema();
-  for (const auto& field : bigSchema->fields()) {
-    std::string typeName = field->name();
-    if (!std::string("{{ package_name }}").empty()) {
-      typeName = std::string("{{ package_name }}::") + typeName;
-    }
-    reg.registerType(typeName, field->type());
-  }
+{% for datatype in datatypes %}
+  reg.registerType("{{ datatype.class.full_type }}", bigSchema->GetFieldByName("{{ datatype.class.bare_type }}")->type());
+{% endfor %}
   return true;
 }
 

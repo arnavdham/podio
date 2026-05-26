@@ -169,6 +169,12 @@ class CPPClassGenerator(ClassGeneratorBaseMixin):
             "ArrowMapper.h",
             self._eval_template("ArrowMapper.h.jinja2", data),
         )
+        self._write_file(
+            "ArrowMapper.cc",
+            f'#include "{self.incfolder}ArrowMapper.h"\n',
+        )
+
+
 
     def _arrow_fields(self, datatype):
         """Create Arrow field expressions for the members and relations of a datatype"""
