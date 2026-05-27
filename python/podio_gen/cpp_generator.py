@@ -164,6 +164,7 @@ class CPPClassGenerator(ClassGeneratorBaseMixin):
             "package_name": self.package_name,
             "schema_version": self.datamodel.schema_version,
             "datatypes": datatypes,
+            "incfolder": self.incfolder,
         }
         self._write_file(
             "ArrowMapper.h",
@@ -171,7 +172,7 @@ class CPPClassGenerator(ClassGeneratorBaseMixin):
         )
         self._write_file(
             "ArrowMapper.cc",
-            f'#include "{self.incfolder}ArrowMapper.h"\n',
+            self._eval_template("ArrowMapper.cc.jinja2", data),
         )
 
 

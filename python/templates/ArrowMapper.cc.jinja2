@@ -1,0 +1,72 @@
+// AUTOMATICALLY GENERATED FILE - DO NOT EDIT
+
+#include "{{ incfolder }}ArrowMapper.h"
+#include "podio/utilities/ArrowTypeRegistry.h"
+#include <arrow/type.h>
+#include <arrow/util/key_value_metadata.h>
+
+#include <memory>
+#include <string>
+#include <unordered_map>
+
+namespace {{ package_name }}::arrow_io {
+
+static std::shared_ptr<arrow::DataType> objectRefType() {
+  return arrow::struct_({
+      arrow::field("collectionID", arrow::uint32(), false),
+      arrow::field("index", arrow::int32(), false),
+  });
+}
+
+static std::shared_ptr<arrow::DataType> frameParametersType() {
+  return arrow::struct_({
+      arrow::field("int_params", arrow::map(arrow::utf8(), arrow::list(arrow::int32()))),
+      arrow::field("float_params", arrow::map(arrow::utf8(), arrow::list(arrow::float32()))),
+      arrow::field("double_params", arrow::map(arrow::utf8(), arrow::list(arrow::float64()))),
+      arrow::field("string_params", arrow::map(arrow::utf8(), arrow::list(arrow::utf8()))),
+  });
+}
+
+static const std::unordered_map<std::string, std::shared_ptr<arrow::DataType>>& typeMap() {
+  static const std::unordered_map<std::string, std::shared_ptr<arrow::DataType>> instance = {
+{% for datatype in datatypes %}
+    {
+      "{{ datatype.class.full_type }}",
+      arrow::list(arrow::struct_({
+{% for field in datatype.arrow_fields %}
+          {{ field }},
+{% endfor %}
+      }))
+    },
+{% endfor %}
+  };
+  return instance;
+}
+
+std::shared_ptr<arrow::Schema> schema() {
+  const auto& types = typeMap();
+  static const auto instance = arrow::schema({
+{% for datatype in datatypes %}
+      arrow::field("{{ datatype.class.bare_type }}", types.at("{{ datatype.class.full_type }}")),
+{% endfor %}
+      arrow::field("frame_parameters", frameParametersType()),
+  });
+  return instance;
+}
+
+std::shared_ptr<arrow::Schema>
+schemaWithMetadata(std::shared_ptr<const arrow::KeyValueMetadata> metadata) {
+  return schema()->WithMetadata(std::move(metadata));
+}
+
+bool registerTypes() {
+  auto& reg = podio::ArrowTypeRegistry::mutInstance();
+  for (const auto& [typeName, type] : typeMap()) {
+    reg.registerType(typeName, type);
+  }
+  return true;
+}
+
+static const bool typesRegistered = registerTypes();
+
+} // namespace {{ package_name }}::arrow_io

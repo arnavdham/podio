@@ -1780,12 +1780,16 @@ TEST_CASE("Add type lists", "[basics][code-gen]") {
 }
 
 #if PODIO_ENABLE_ARROW
+  #include "podio/utilities/ArrowTypeRegistry.h"
   #include "datamodel/ArrowMapper.h"
+  #include "datamodel/EnergyInNamespaceCollection.h"
+  #include "datamodel/ExampleWithNamespaceCollection.h"
   #include <arrow/type.h>
 
 // Helper lambda to extract the struct type from a registered List type
 inline std::shared_ptr<arrow::StructType> getArrowStructType(const std::shared_ptr<arrow::DataType>& type) {
-  if (!type || type->id() != arrow::Type::LIST) return nullptr;
+  if (!type || type->id() != arrow::Type::LIST)
+    return nullptr;
   auto listType = std::static_pointer_cast<arrow::ListType>(type);
   return std::static_pointer_cast<arrow::StructType>(listType->value_type());
 }
@@ -1889,29 +1893,30 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
   auto const& reg = podio::ArrowTypeRegistry::instance();
 
   SECTION("Verify that all expected datamodel types are registered") {
-    const std::vector<std::string> expectedTypes = {
-      "EventInfo",
-      "ExampleHit",
-      "ExampleMC",
-      "ExampleCluster",
-      "ExampleReferencingType",
-      "ExampleWithVectorMember",
-      "ExampleWithOneRelation",
-      "ExampleWithArrayComponent",
-      "ExampleWithComponent",
-      "ExampleForCyclicDependency1",
-      "ExampleForCyclicDependency2",
-      "ex42::ExampleWithNamespace",
-      "ex42::ExampleWithARelation",
-      "ExampleWithDifferentNamespaceRelations",
-      "ExampleWithArray",
-      "ExampleWithFixedWidthIntegers",
-      "ExampleWithUserInit",
-      "ExampleWithSingleSelfRelation",
-      "ExampleWithInterfaceRelation",
-      "ExampleWithExternalExtraCode",
-      "nsp::EnergyInNamespace"
-    };
+    // Check using exact valueTypeNames from generated collections
+    REQUIRE(reg.getType(std::string(EventInfoCollection::valueTypeName)) != nullptr);
+    REQUIRE(reg.getType(std::string(ExampleHitCollection::valueTypeName)) != nullptr);
+    REQUIRE(reg.getType(std::string(ExampleClusterCollection::valueTypeName)) != nullptr);
+    REQUIRE(reg.getType(std::string(ExampleForCyclicDependency1Collection::valueTypeName)) != nullptr);
+    REQUIRE(reg.getType(std::string(ExampleForCyclicDependency2Collection::valueTypeName)) != nullptr);
+    REQUIRE(reg.getType(std::string(ExampleWithOneRelationCollection::valueTypeName)) != nullptr);
+    REQUIRE(reg.getType(std::string(ExampleWithUserInitCollection::valueTypeName)) != nullptr);
+    REQUIRE(reg.getType(std::string(ExampleWithVectorMemberCollection::valueTypeName)) != nullptr);
+    REQUIRE(reg.getType(std::string(ex42::ExampleWithNamespaceCollection::valueTypeName)) != nullptr);
+    REQUIRE(reg.getType(std::string(nsp::EnergyInNamespaceCollection::valueTypeName)) != nullptr);
+
+    // Check raw string names of other datatypes
+    const std::vector<std::string> expectedTypes = {"ExampleMC",
+                                                    "ExampleReferencingType",
+                                                    "ExampleWithArrayComponent",
+                                                    "ExampleWithComponent",
+                                                    "ex42::ExampleWithARelation",
+                                                    "ExampleWithDifferentNamespaceRelations",
+                                                    "ExampleWithArray",
+                                                    "ExampleWithFixedWidthIntegers",
+                                                    "ExampleWithSingleSelfRelation",
+                                                    "ExampleWithInterfaceRelation",
+                                                    "ExampleWithExternalExtraCode"};
 
     for (const auto& typeName : expectedTypes) {
       INFO("Checking registration of type: " << typeName);
@@ -1920,7 +1925,7 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
   }
 
   SECTION("Verify primitive types mapping") {
-    auto structType = getArrowStructType(reg.getType("EventInfo"));
+    auto structType = getArrowStructType(reg.getType(std::string(EventInfoCollection::valueTypeName)));
     REQUIRE(structType != nullptr);
     auto numberField = structType->GetFieldByName("Number");
     REQUIRE(numberField != nullptr);
@@ -1928,16 +1933,14 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
   }
 
   SECTION("Verify multi-field hit type mapping") {
-    auto structType = getArrowStructType(reg.getType("ExampleHit"));
+    auto structType = getArrowStructType(reg.getType(std::string(ExampleHitCollection::valueTypeName)));
     REQUIRE(structType != nullptr);
 
-    const std::vector<std::pair<std::string, arrow::Type::type>> expectedFields = {
-      {"cellID", arrow::Type::UINT64},
-      {"x", arrow::Type::DOUBLE},
-      {"y", arrow::Type::DOUBLE},
-      {"z", arrow::Type::DOUBLE},
-      {"energy", arrow::Type::DOUBLE}
-    };
+    const std::vector<std::pair<std::string, arrow::Type::type>> expectedFields = {{"cellID", arrow::Type::UINT64},
+                                                                                   {"x", arrow::Type::DOUBLE},
+                                                                                   {"y", arrow::Type::DOUBLE},
+                                                                                   {"z", arrow::Type::DOUBLE},
+                                                                                   {"energy", arrow::Type::DOUBLE}};
 
     for (const auto& [fieldName, typeId] : expectedFields) {
       auto field = structType->GetFieldByName(fieldName);
@@ -1947,7 +1950,7 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
   }
 
   SECTION("Verify vector members mapping (List of primitives)") {
-    auto structType = getArrowStructType(reg.getType("ExampleWithVectorMember"));
+    auto structType = getArrowStructType(reg.getType(std::string(ExampleWithVectorMemberCollection::valueTypeName)));
     REQUIRE(structType != nullptr);
 
     auto countField = structType->GetFieldByName("count");
@@ -1959,7 +1962,7 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
   }
 
   SECTION("Verify one-to-one relations mapping (Object Reference struct)") {
-    auto structType = getArrowStructType(reg.getType("ExampleWithOneRelation"));
+    auto structType = getArrowStructType(reg.getType(std::string(ExampleWithOneRelationCollection::valueTypeName)));
     REQUIRE(structType != nullptr);
 
     auto clusterField = structType->GetFieldByName("cluster");
@@ -1976,7 +1979,7 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
   }
 
   SECTION("Verify one-to-many relations mapping (List of Object References)") {
-    auto structType = getArrowStructType(reg.getType("ExampleCluster"));
+    auto structType = getArrowStructType(reg.getType(std::string(ExampleClusterCollection::valueTypeName)));
     REQUIRE(structType != nullptr);
 
     auto hitsField = structType->GetFieldByName("Hits");
@@ -1992,7 +1995,7 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
   }
 
   SECTION("Verify nested component structures & fixed-size arrays mapping") {
-    auto structType = getArrowStructType(reg.getType("ExampleWithArrayComponent"));
+    auto structType = getArrowStructType(reg.getType(std::string(ExampleWithArrayComponentCollection::valueTypeName)));
     REQUIRE(structType != nullptr);
 
     auto sField = structType->GetFieldByName("s");
@@ -2016,7 +2019,8 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
   }
 
   SECTION("Verify fixed-width integer types and custom struct layouts") {
-    auto structType = getArrowStructType(reg.getType("ExampleWithFixedWidthIntegers"));
+    auto structType =
+        getArrowStructType(reg.getType(std::string(ExampleWithFixedWidthIntegersCollection::valueTypeName)));
     REQUIRE(structType != nullptr);
 
     // Direct members
@@ -2043,7 +2047,7 @@ TEST_CASE("ArrowTypeRegistry - Comprehensive Verification", "[arrow]") {
   }
 
   SECTION("Verify fixed-size array of struct components") {
-    auto structType = getArrowStructType(reg.getType("ExampleWithArray"));
+    auto structType = getArrowStructType(reg.getType(std::string(ExampleWithArrayCollection::valueTypeName)));
     REQUIRE(structType != nullptr);
 
     // structArray field (array of structs: NamespaceStruct structArray[4])
