@@ -2,8 +2,10 @@
 
 #include "{{ incfolder }}ArrowMapper.h"
 #include "podio/utilities/ArrowTypeRegistry.h"
+#include "podio/utilities/ArrowConverterRegistry.h"
 #include <arrow/type.h>
 #include <arrow/util/key_value_metadata.h>
+#include <arrow/api.h>
 
 #include <memory>
 #include <string>
@@ -68,5 +70,19 @@ bool registerTypes() {
 }
 
 static const bool typesRegistered = registerTypes();
+
+bool registerConverters() {
+  auto& convRegistry = podio::ArrowConverterRegistry::mutInstance();
+{% for datatype in datatypes %}
+  convRegistry.registerConverter("{{ datatype.class.full_type }}", [](const podio::CollectionBase* coll) {
+    (void)coll; //not using it yet
+    auto type = podio::ArrowTypeRegistry::instance().getType("{{ datatype.class.full_type }}");
+    return arrow::MakeArrayOfNull(type, 1).ValueOrDie();
+  });
+{% endfor %}
+  return true;
+}
+
+static const bool convertersRegistered = registerConverters();
 
 } // namespace {{ package_name }}::arrow_io

@@ -56,7 +56,8 @@ if (ENABLE_ARROW)
 endif()
 
 if (ENABLE_ARROW)
-  target_link_libraries(unittest_podio PRIVATE ${PODIO_ARROW_TARGET} TestDataModelArrowMapper ExtensionDataModelArrowMapper InterfaceExtensionDataModelArrowMapper)
+  target_sources(unittest_podio PRIVATE test_arrow_writer.cpp)
+  target_link_libraries(unittest_podio PRIVATE podio::podioArrowIO ${PODIO_ARROW_TARGET} TestDataModelArrowMapper ExtensionDataModelArrowMapper InterfaceExtensionDataModelArrowMapper)
   target_compile_definitions(unittest_podio PRIVATE PODIO_ENABLE_ARROW=1)
 endif()
 

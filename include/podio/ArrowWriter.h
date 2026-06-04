@@ -1,17 +1,27 @@
 #ifndef PODIO_ARROWWRITER_H
 #define PODIO_ARROWWRITER_H
 
+#include "podio/utilities/ArrowTypeRegistry.h"
+#include "podio/utilities/ArrowConverterRegistry.h"
 #include "podio/utilities/DatamodelRegistryIOHelpers.h"
 #include "podio/utilities/StringKeyMap.h"
 
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <unordered_map>
 #include <vector>
 
+#include "podio/Frame.h"
+
+namespace arrow {
+class DataType;
+class Array;
+}
+
 namespace podio {
-class Frame;
 
 /// The ArrowWriter writes podio frames into Apache Arrow IPC files.
 ///
@@ -68,7 +78,14 @@ public:
 private:
   struct CategoryInfo {
     std::vector<std::string> collsToWrite{};
+    std::vector<std::shared_ptr<arrow::DataType>> collTypes{};
+    std::vector<ArrowConverterRegistry::CreatorFunc> collConverters{};
     size_t frameCount{0};
+  };
+
+  struct BufferedFrame {
+    std::string category;
+    std::unordered_map<std::string, std::shared_ptr<arrow::Array>> collectionArrays;
   };
 
   CategoryInfo& getCategoryInfo(std::string_view category);
@@ -78,6 +95,7 @@ private:
   std::string m_filename{};
   bool m_finished{false};
   podio::StringKeyMap<CategoryInfo> m_categories{};
+  std::vector<BufferedFrame> m_bufferedFrames{};
   DatamodelDefinitionCollector m_datamodelCollector{};
 };
 

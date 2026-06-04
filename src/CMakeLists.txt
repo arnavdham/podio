@@ -60,6 +60,7 @@ SET(core_sources
   Glob.cc
   Pythonizations.cc
   ArrowTypeRegistry.cc
+  ArrowConverterRegistry.cc
   )
 
 SET(core_headers

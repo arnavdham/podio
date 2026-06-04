@@ -2,9 +2,15 @@
 #include "podio/CollectionBase.h"
 #include "podio/Frame.h"
 #include "podio/utilities/ArrowTypeRegistry.h"
+#include "podio/utilities/ArrowConverterRegistry.h"
 #include "podio/utilities/MiscHelpers.h"
 
 #include <arrow/api.h>
+
+#include <arrow/array/concatenate.h>
+#include <arrow/io/file.h>
+#include <arrow/ipc/writer.h>
+#include <arrow/util/vector.h>
 
 #include <algorithm>
 #include <iterator>
@@ -50,7 +56,6 @@ namespace {
 } // namespace
 
 ArrowWriter::ArrowWriter(const std::string& filename) : m_filename(filename) {
-  // todo-task: Initialize Arrow output file stream
 }
 
 ArrowWriter::~ArrowWriter() {
@@ -78,17 +83,152 @@ void ArrowWriter::writeFrame(const podio::Frame& frame, std::string_view categor
 
   ++catInfo.frameCount;
 
-  // todo-task: Implement conversion of collections to Arrow arrays/record batches
-  throw std::runtime_error("ArrowWriter category setup is available, Arrow array conversion yet to be implemented");
+  std::unordered_map<std::string, std::shared_ptr<arrow::Array>> collectionArrays;
+  for (size_t i = 0; i < catInfo.collsToWrite.size(); ++i) {
+    const auto& collName = catInfo.collsToWrite[i];
+    const auto* coll = frame.getCollectionForWrite(collName);
+    if (!coll) {
+      throw std::runtime_error("Collection '" + collName + "' not found in frame of category " + std::string(category));
+    }
+    const auto& converter = catInfo.collConverters[i];
+    auto array = converter(coll);
+    if (!array) {
+      throw std::runtime_error("Arrow converter returned a null array for collection '" + collName + "'");
+    }
+    if (array->length() != 1) {
+      throw std::runtime_error("Arrow converter for collection '" + collName + "' returned " +
+                               std::to_string(array->length()) + " rows, expected exactly one row per Frame");
+    }
+    collectionArrays[collName] = std::move(array);
+  }
+
+  m_bufferedFrames.push_back({std::string(category), std::move(collectionArrays)});
 }
 
 void ArrowWriter::finish() {
   if (m_finished) {
     return;
   }
-
-  // todo-task: Write final schema with accumulated metadata, close/finalize files
   m_finished = true;
+
+  if (m_bufferedFrames.empty()) {
+    return;
+  }
+
+  // 1. Build unified schema
+  std::vector<std::shared_ptr<arrow::Field>> topLevelFields;
+  topLevelFields.push_back(arrow::field("__category__", arrow::utf8(), /*nullable=*/false));
+
+  for (const auto& [catName, catInfo] : m_categories) {
+    std::vector<std::shared_ptr<arrow::Field>> structFields;
+    for (size_t i = 0; i < catInfo.collsToWrite.size(); ++i) {
+      structFields.push_back(arrow::field(catInfo.collsToWrite[i], catInfo.collTypes[i]));
+    }
+    // Struct representing this category is nullable
+    topLevelFields.push_back(arrow::field(std::string(catName), arrow::struct_(structFields), /*nullable=*/true));
+  }
+  auto wideSchema = arrow::schema(topLevelFields);
+
+  // 2. Build Column Arrays
+
+  // __category__ column
+  arrow::StringBuilder catBuilder;
+  for (const auto& bf : m_bufferedFrames) {
+    auto status = catBuilder.Append(bf.category);
+    if (!status.ok()) {
+      throw std::runtime_error("Failed to append category to builder: " + status.ToString());
+    }
+  }
+  std::shared_ptr<arrow::Array> catArray;
+  auto status = catBuilder.Finish(&catArray);
+  if (!status.ok()) {
+    throw std::runtime_error("Failed to finish category builder: " + status.ToString());
+  }
+
+  std::vector<std::shared_ptr<arrow::Array>> topLevelArrays;
+  topLevelArrays.push_back(catArray);
+
+  // Build each category struct array in the exact order of the schema fields
+  for (size_t fieldIdx = 1; fieldIdx < topLevelFields.size(); ++fieldIdx) {
+    const auto& catName = topLevelFields[fieldIdx]->name();
+    const auto& catInfo = m_categories.find(catName)->second;
+
+    std::vector<std::shared_ptr<arrow::Array>> childArrays;
+    for (size_t colIdx = 0; colIdx < catInfo.collsToWrite.size(); ++colIdx) {
+      const auto& collName = catInfo.collsToWrite[colIdx];
+      const auto& collType = catInfo.collTypes[colIdx];
+
+      std::vector<std::shared_ptr<arrow::Array>> individualArrays;
+      for (const auto& bf : m_bufferedFrames) {
+        if (bf.category == catName) {
+          const auto it = bf.collectionArrays.find(collName);
+          if (it == bf.collectionArrays.end() || !it->second) {
+            throw std::runtime_error("Collection '" + collName + "' not found in buffered frame of category " +
+                                     catName);
+          }
+          individualArrays.push_back(it->second);
+        } else {
+          auto nullArray = arrow::MakeArrayOfNull(collType, 1).ValueOrDie();
+          individualArrays.push_back(nullArray);
+        }
+      }
+      auto concatenated = arrow::Concatenate(individualArrays).ValueOrDie();
+      childArrays.push_back(concatenated);
+    }
+
+    // Build the null bitmap for the struct array
+    arrow::TypedBufferBuilder<bool> bitmapBuilder;
+    for (const auto& bf : m_bufferedFrames) {
+      auto appendStatus = bitmapBuilder.Append(bf.category == catName);
+      if (!appendStatus.ok()) {
+        throw std::runtime_error("Failed to append to bitmap builder: " + appendStatus.ToString());
+      }
+    }
+    std::shared_ptr<arrow::Buffer> nullBitmap;
+    status = bitmapBuilder.Finish(&nullBitmap);
+    if (!status.ok()) {
+      throw std::runtime_error("Failed to finish null bitmap builder: " + status.ToString());
+    }
+
+    std::vector<std::shared_ptr<arrow::Field>> structFields;
+    for (size_t i = 0; i < catInfo.collsToWrite.size(); ++i) {
+      structFields.push_back(arrow::field(catInfo.collsToWrite[i], catInfo.collTypes[i]));
+    }
+
+    const auto nullCount = static_cast<int64_t>(m_bufferedFrames.size() - catInfo.frameCount);
+    auto structArray = arrow::StructArray::Make(childArrays, structFields, nullBitmap, nullCount).ValueOrDie();
+    topLevelArrays.push_back(structArray);
+  }
+
+  // 3. Make a single record batch and write it to file
+  auto batch = arrow::RecordBatch::Make(wideSchema, static_cast<int64_t>(m_bufferedFrames.size()), topLevelArrays);
+  const auto validateStatus = batch->ValidateFull();
+  if (!validateStatus.ok()) {
+    throw std::runtime_error("Failed to build a valid Arrow record batch: " + validateStatus.ToString());
+  }
+
+  auto outFileResult = arrow::io::FileOutputStream::Open(m_filename);
+  if (!outFileResult.ok()) {
+    throw std::runtime_error("Failed to open file output stream '" + m_filename +
+                             "': " + outFileResult.status().ToString());
+  }
+  auto outFile = outFileResult.ValueOrDie();
+
+  auto writerResult = arrow::ipc::MakeFileWriter(outFile, wideSchema);
+  if (!writerResult.ok()) {
+    throw std::runtime_error("Failed to create Arrow IPC file writer: " + writerResult.status().ToString());
+  }
+  auto writer = writerResult.ValueOrDie();
+
+  auto writeStatus = writer->WriteRecordBatch(*batch);
+  if (!writeStatus.ok()) {
+    throw std::runtime_error("Failed to write Arrow record batch to IPC file: " + writeStatus.ToString());
+  }
+
+  auto closeStatus = writer->Close();
+  if (!closeStatus.ok()) {
+    throw std::runtime_error("Failed to close Arrow IPC writer: " + closeStatus.ToString());
+  }
 }
 
 std::tuple<std::vector<std::string>, std::vector<std::string>>
@@ -115,7 +255,6 @@ void ArrowWriter::initializeCategory(CategoryInfo& catInfo, const podio::Frame& 
                                      const std::vector<std::string>& collsToWrite) {
   catInfo.collsToWrite = podio::utils::sortAlphabeticaly(collsToWrite);
 
-  std::vector<std::shared_ptr<arrow::Field>> schemaFields;
   for (const auto& name : catInfo.collsToWrite) {
     const auto* coll = frame.getCollectionForWrite(name);
     if (!coll) {
@@ -128,13 +267,16 @@ void ArrowWriter::initializeCategory(CategoryInfo& catInfo, const podio::Frame& 
     const std::string typeName = std::string(coll->getValueTypeName());
     auto arrowType = podio::ArrowTypeRegistry::instance().getType(typeName);
     if (!arrowType) {
-      throw std::runtime_error("Arrow type mapping not registered for collection: " + name +
+      throw std::runtime_error("Arrow type mapping not registered for collection: " + name + " of type " + typeName);
+    }
+    auto converter = podio::ArrowConverterRegistry::instance().getConverter(typeName);
+    if (!converter) {
+      throw std::runtime_error("Arrow converter callback not registered for collection: " + name +
                                " of type " + typeName);
     }
-    schemaFields.push_back(arrow::field(name, std::move(arrowType)));
+    catInfo.collTypes.push_back(std::move(arrowType));
+    catInfo.collConverters.push_back(std::move(converter));
   }
-
-  [[maybe_unused]] auto categorySchema = arrow::schema(std::move(schemaFields));
 }
 
 } // namespace podio
