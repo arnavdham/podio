@@ -1,4 +1,5 @@
 // AUTOMATICALLY GENERATED FILE - DO NOT EDIT
+{% import "macros/arrow.jinja2" as arrow_macros %}
 
 #include "{{ incfolder }}ArrowMapper.h"
 #include "podio/utilities/ArrowTypeRegistry.h"
@@ -8,8 +9,13 @@
 #include <arrow/api.h>
 
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
+
+{% for datatype in datatypes %}
+#include "{{ incfolder }}{{ datatype.class.bare_type }}Collection.h"
+{% endfor %}
 
 namespace {{ package_name }}::arrow_io {
 
@@ -75,9 +81,77 @@ bool registerConverters() {
   auto& convRegistry = podio::ArrowConverterRegistry::mutInstance();
 {% for datatype in datatypes %}
   convRegistry.registerConverter("{{ datatype.class.full_type }}", [](const podio::CollectionBase* coll) {
-    (void)coll; //not using it yet
+    const auto* concreteColl = static_cast<const {{ datatype.class.full_type }}Collection*>(coll);
     auto type = podio::ArrowTypeRegistry::instance().getType("{{ datatype.class.full_type }}");
-    return arrow::MakeArrayOfNull(type, 1).ValueOrDie();
+    std::unique_ptr<arrow::ArrayBuilder> builder;
+    auto status = arrow::MakeBuilder(arrow::default_memory_pool(), type, &builder);
+    if (!status.ok()) {
+      throw std::runtime_error("Failed to create builder for type '{{ datatype.class.full_type }}': " + status.ToString());
+    }
+    auto* listBuilder = static_cast<arrow::ListBuilder*>(builder.get());
+    auto* structBuilder = static_cast<arrow::StructBuilder*>(listBuilder->value_builder());
+
+    auto checkStatus = [](const arrow::Status& s, const std::string& msg) {
+      if (!s.ok()) {
+        throw std::runtime_error("Arrow error in converter for '{{ datatype.class.full_type }}': " + msg + ": " + s.ToString());
+      }
+    };
+
+    auto* objectIdBuilder = static_cast<arrow::StructBuilder*>(structBuilder->child(0));
+    auto* collIdBuilder = static_cast<arrow::UInt32Builder*>(objectIdBuilder->child(0));
+    auto* indexBuilder = static_cast<arrow::Int32Builder*>(objectIdBuilder->child(1));
+
+    {% for member in datatype.arrow_metadata.members %}
+{{ arrow_macros.declare_builder(member, 'structBuilder', loop.index, '') }}
+    {% endfor %}
+    
+    {% for member in datatype.arrow_metadata.vector_members %}
+{{ arrow_macros.declare_vector_builder(member, 'structBuilder', loop.index + datatype.arrow_metadata.members|length) }}
+    {% endfor %}
+
+    {% for relation in datatype.arrow_metadata.one_to_one_relations %}
+{{ arrow_macros.declare_relation_builder(relation, 'structBuilder', loop.index + datatype.arrow_metadata.members|length + datatype.arrow_metadata.vector_members|length) }}
+    {% endfor %}
+
+    {% for relation in datatype.arrow_metadata.one_to_many_relations %}
+{{ arrow_macros.declare_relation_builder(relation, 'structBuilder', loop.index + datatype.arrow_metadata.members|length + datatype.arrow_metadata.vector_members|length + datatype.arrow_metadata.one_to_one_relations|length) }}
+    {% endfor %}
+
+    checkStatus(listBuilder->Append(), "Failed to append to listBuilder");
+    for (size_t i = 0; i < concreteColl->size(); ++i) {
+      auto obj = (*concreteColl)[i];
+      auto objId = obj.getObjectID();
+      checkStatus(objectIdBuilder->Append(), "Failed to append to objectIdBuilder");
+      checkStatus(collIdBuilder->Append(objId.collectionID), "Failed to append collectionID");
+      checkStatus(indexBuilder->Append(objId.index), "Failed to append index");
+
+      if (coll->isSubsetCollection()) {
+        {% set total_fields = 1 + datatype.arrow_metadata.members|length + datatype.arrow_metadata.vector_members|length + datatype.arrow_metadata.one_to_one_relations|length + datatype.arrow_metadata.one_to_many_relations|length %}
+        {% for idx in range(1, total_fields) %}
+        checkStatus(structBuilder->child({{ idx }})->AppendNull(), "Failed to append null to child {{ idx }}");
+        {% endfor %}
+      } else {
+        {% for member in datatype.arrow_metadata.members %}
+{{ arrow_macros.append_member(member, 'obj', '') }}
+        {% endfor %}
+
+        {% for member in datatype.arrow_metadata.vector_members %}
+{{ arrow_macros.append_vector(member) }}
+        {% endfor %}
+
+        {% for relation in datatype.arrow_metadata.one_to_one_relations %}
+{{ arrow_macros.append_relation(relation) }}
+        {% endfor %}
+
+        {% for relation in datatype.arrow_metadata.one_to_many_relations %}
+{{ arrow_macros.append_relation(relation) }}
+        {% endfor %}
+      }
+      checkStatus(structBuilder->Append(), "Failed to append to structBuilder");
+    }
+    std::shared_ptr<arrow::Array> array;
+    checkStatus(listBuilder->Finish(&array), "Failed to finish listBuilder");
+    return array;
   });
 {% endfor %}
   return true;
