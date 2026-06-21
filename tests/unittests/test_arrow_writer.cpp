@@ -270,8 +270,7 @@ TEST_CASE("ArrowFrameConverter - convertFrameToTable Verification", "[arrow][con
   auto subArray = std::static_pointer_cast<arrow::ListArray>(table->GetColumnByName("SubsetHits")->chunk(0));
   REQUIRE(subArray->value_length(0) == 1);
 
-  auto subStruct = std::static_pointer_cast<arrow::StructArray>(subArray->values());
-  auto subObjectID = std::static_pointer_cast<arrow::StructArray>(subStruct->GetFieldByName("_objectID"));
+  auto subObjectID = std::static_pointer_cast<arrow::StructArray>(subArray->values());
   auto subIndex = std::static_pointer_cast<arrow::Int32Array>(subObjectID->GetFieldByName("index"));
   REQUIRE(subIndex->Value(0) == 0); // pointing to hit1 index
 

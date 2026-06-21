@@ -8,6 +8,13 @@
 
 namespace podio {
 
+std::shared_ptr<arrow::DataType> objectRefType() {
+  return arrow::struct_({
+      arrow::field("collectionID", arrow::uint32(), false),
+      arrow::field("index", arrow::int32(), false),
+  });
+}
+
 namespace {
 
 template <typename T, typename BuilderType>
@@ -64,6 +71,44 @@ std::shared_ptr<arrow::Array> convertParameters(const podio::GenericParameters& 
   return structResult.ValueOrDie();
 }
 
+std::shared_ptr<arrow::Array> convertSubsetCollection(const podio::CollectionBase* coll) {
+  coll->prepareForWrite();
+  auto buffers = const_cast<podio::CollectionBase*>(coll)->getBuffers();
+  if (!buffers.references || buffers.references->empty()) {
+    throw std::runtime_error("Subset collection buffers do not contain references");
+  }
+  const auto& refIDs = *(buffers.references->at(0));
+
+  auto type = arrow::list(podio::objectRefType());
+  std::unique_ptr<arrow::ArrayBuilder> builder;
+  auto status = arrow::MakeBuilder(arrow::default_memory_pool(), type, &builder);
+  if (!status.ok()) {
+    throw std::runtime_error("Failed to create builder for subset collection: " + status.ToString());
+  }
+
+  auto* collectionBuilder = static_cast<arrow::ListBuilder*>(builder.get());
+  auto* objectBuilder = static_cast<arrow::StructBuilder*>(collectionBuilder->value_builder());
+  auto* collIdBuilder = static_cast<arrow::UInt32Builder*>(objectBuilder->child(0));
+  auto* indexBuilder = static_cast<arrow::Int32Builder*>(objectBuilder->child(1));
+
+  auto checkStatus = [](const arrow::Status& s, const std::string& msg) {
+    if (!s.ok()) {
+      throw std::runtime_error("Arrow error in subset converter: " + msg + ": " + s.ToString());
+    }
+  };
+
+  checkStatus(collectionBuilder->Append(), "Failed to append to collectionBuilder");
+  for (const auto& objId : refIDs) {
+    checkStatus(objectBuilder->Append(), "Failed to append to objectBuilder");
+    checkStatus(collIdBuilder->Append(objId.collectionID), "Failed to append collectionID");
+    checkStatus(indexBuilder->Append(objId.index), "Failed to append index");
+  }
+
+  std::shared_ptr<arrow::Array> array;
+  checkStatus(collectionBuilder->Finish(&array), "Failed to finish collectionBuilder");
+  return array;
+}
+
 } // namespace
 
 std::shared_ptr<arrow::Table> convertFrameToTable(
@@ -84,17 +129,26 @@ std::shared_ptr<arrow::Table> convertFrameToTable(
 
     std::string typeName = std::string(coll->getValueTypeName());
 
-    auto arrowType = podio::ArrowTypeRegistry::instance().getType(typeName);
-    if (!arrowType) {
-      throw std::runtime_error("Arrow type not registered for value type '" + typeName + "'");
+    std::shared_ptr<arrow::DataType> arrowType;
+    std::shared_ptr<arrow::Array> array;
+
+    if (coll->isSubsetCollection()) {
+      arrowType = arrow::list(podio::objectRefType());
+      array = convertSubsetCollection(coll);
+    } else {
+      arrowType = podio::ArrowTypeRegistry::instance().getType(typeName);
+      if (!arrowType) {
+        throw std::runtime_error("Arrow type not registered for value type '" + typeName + "'");
+      }
+
+      auto converter = podio::ArrowConverterRegistry::instance().getConverter(typeName);
+      if (!converter) {
+        throw std::runtime_error("Arrow converter not registered for value type '" + typeName + "'");
+      }
+
+      array = converter(coll);
     }
 
-    auto converter = podio::ArrowConverterRegistry::instance().getConverter(typeName);
-    if (!converter) {
-      throw std::runtime_error("Arrow converter not registered for value type '" + typeName + "'");
-    }
-
-    auto array = converter(coll);
     if (!array) {
       throw std::runtime_error("Arrow converter returned null for collection '" + collName + "'");
     }

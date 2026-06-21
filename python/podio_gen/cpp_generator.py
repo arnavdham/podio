@@ -195,7 +195,6 @@ class CPPClassGenerator(ClassGeneratorBaseMixin):
             "schema_version": self.datamodel.schema_version,
             "datatypes": datatypes,
             "incfolder": self.incfolder,
-            "use_get_syntax": self.get_syntax,
         }
         self._write_file(
             "ArrowMapper.h",
@@ -208,21 +207,25 @@ class CPPClassGenerator(ClassGeneratorBaseMixin):
 
     def _arrow_fields(self, datatype):
         """Create Arrow field expressions for the members and relations of a datatype"""
-        fields = [self._arrow_field("_objectID", "objectRefType()", nullable=False)]
+        fields = []
         fields.extend(
             self._arrow_field(member.name, self._arrow_type(member))
             for member in datatype["Members"]
         )
         fields.extend(
-            self._arrow_field(member.name, f"arrow::list({self._arrow_type(member)})")
+            self._arrow_field(
+                member.name, f"arrow::list({self._arrow_type(member)})"
+            )
             for member in datatype["VectorMembers"]
         )
         fields.extend(
-            self._arrow_field(relation.name, "objectRefType()")
+            self._arrow_field(relation.name, "podio::objectRefType()")
             for relation in datatype["OneToOneRelations"]
         )
         fields.extend(
-            self._arrow_field(relation.name, "arrow::list(objectRefType())")
+            self._arrow_field(
+                relation.name, "arrow::list(podio::objectRefType())"
+            )
             for relation in datatype["OneToManyRelations"]
         )
         return fields
@@ -303,7 +306,7 @@ class CPPClassGenerator(ClassGeneratorBaseMixin):
 
     def _arrow_field(self, name, type_expr, nullable=True):
         """Create a C++ arrow::field expression"""
-        nullable_arg = ", true" if nullable else ", false"
+        nullable_arg = "" if nullable else ", false"
         return f'arrow::field("{name}", {type_expr}{nullable_arg})'
 
     def _arrow_type(self, member):

@@ -6,12 +6,18 @@
 #include <vector>
 
 namespace arrow {
+class DataType;
 class Table;
 }
 
 namespace podio {
 
 class Frame;
+
+/**
+ * @brief Get the standard Arrow DataType for object references/IDs.
+ */
+std::shared_ptr<arrow::DataType> objectRefType();
 
 /**
  * @brief Convert a PODIO Frame to an Arrow Table (1-row).
