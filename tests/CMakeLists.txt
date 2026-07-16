@@ -129,5 +129,20 @@ else()
   message(STATUS "Julia Datamodel generation is disabled.")
 endif()
 
+if(PODIO_BUILD_BENCHMARKS)
+  add_test(NAME ArrowPipeBenchmark COMMAND podio_arrow_pipe_roundtrip
+    --input ${PROJECT_BINARY_DIR}/tests/root_io/example_frame.root
+    --events 1
+    --mode sequential
+    --preload-frames on
+    --iterations 1
+    --output-json ${PROJECT_BINARY_DIR}/tests/arrow_pipe_benchmark.json
+  )
+  PODIO_SET_TEST_ENV(ArrowPipeBenchmark)
+  set_tests_properties(ArrowPipeBenchmark PROPERTIES
+    FIXTURES_REQUIRED podio_write_root_fixture
+  )
+endif()
+
 # Customize CTest to potentially disable some of the tests with known problems
 configure_file(CTestCustom.cmake ${PROJECT_BINARY_DIR}/CTestCustom.cmake @ONLY)

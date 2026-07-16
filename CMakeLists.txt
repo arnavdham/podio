@@ -73,6 +73,11 @@ option(ENABLE_RNTUPLE    "Build with support for the new ROOT NTtuple format" OF
 option(ENABLE_DATASOURCE "Build podio's ROOT DataSource" OFF)
 option(PODIO_USE_CLANG_FORMAT "Use clang-format to format the code" OFF)
 option(ENABLE_JULIA      "Enable Julia support. When enabled, Julia datamodels will be generated, and Julia tests will run." OFF)
+option(PODIO_BUILD_BENCHMARKS "Build benchmarks" OFF)
+
+if(PODIO_BUILD_BENCHMARKS AND NOT ENABLE_ARROW)
+  message(FATAL_ERROR "PODIO_BUILD_BENCHMARKS requires ENABLE_ARROW=ON")
+endif()
 
 
 #--- Declare ROOT dependency ---------------------------------------------------
@@ -209,6 +214,10 @@ find_package(fmt 9 REQUIRED)
 
 add_subdirectory(tools)
 add_subdirectory(python)
+
+if(PODIO_BUILD_BENCHMARKS)
+  add_subdirectory(benchmarks)
+endif()
 
 
 if(BUILD_TESTING)
