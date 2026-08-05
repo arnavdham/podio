@@ -464,7 +464,7 @@ void reader_thread_func(
       timings.arrow_to_frame = std::chrono::duration<double>(t3 - t2).count();
 
       auto t4 = std::chrono::high_resolution_clock::now();
-      double chk = touch_and_checksum(*recFrame, selected_cols);
+      double chk = touch_and_checksum(recFrame, selected_cols);
       auto t5 = std::chrono::high_resolution_clock::now();
       timings.materialization = std::chrono::duration<double>(t5 - t4).count();
 
@@ -661,7 +661,7 @@ int main(int argc, char* argv[]) {
         timings.arrow_to_frame = std::chrono::duration<double>(t9 - t8).count();
 
         auto t10 = std::chrono::high_resolution_clock::now();
-        double chk = touch_and_checksum(*recFrame, selected_cols);
+        double chk = touch_and_checksum(recFrame, selected_cols);
         auto t11 = std::chrono::high_resolution_clock::now();
         timings.materialization = std::chrono::duration<double>(t11 - t10).count();
 
